@@ -43,14 +43,14 @@ int main(int argc, char *argv[]) {
   printf("uuid: %s\n", uuid);
 
   FILE *fptr;
-  fptr = fopen("./src/sample.md", "r");
+  fptr = fopen("./tracked-project-example/sample.md", "r");
 
   char line[100]; // assume that the line does not have more than 100 chars (@todo)
   while (fgets(line, 100, fptr)) {
     printf("%s", line);
   }
 
-  list_files("./src");
+  list_files("./tracked-project-example");
 
   if (argc != 2) {
     printf("Usage: %s <command>\n", argv[0]);
