@@ -1,3 +1,7 @@
+// Libraries necessary for handling system files
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <dirent.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,25 +21,136 @@ char* generate_random_uuid() {
   return uuid;
 }
 
-int list_files(char* path) {
-  DIR *d;
-  struct dirent *dir;
-  d = opendir(path);
-  
-  if (d) {
-    while((dir = readdir(d)) != NULL) {
-      // Check if the path is "." or ".."
-      if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
-        printf("Encountered a relative ('.') path. Skipping...\n");
-        continue;
-      }
-
-      printf("%s\n", dir->d_name);
-    }
-    closedir(d);
+void free_file_list(char** file_list, int num_files) {
+  for (int i = 0; i < num_files; i++) {
+    free(file_list[i]);
   }
 
+  free(file_list);
+}
+
+char **list_files(char* path, int* num_files) {
+  DIR *d;
+  struct dirent *dir;
+
+  char **file_list = NULL; // initialize to NULL pointer
+  int size = 10;
+  int count = 0;
+
+  d = opendir(path);
+  if (d == NULL) {
+    perror("We could not list files from the source directory of the project.\n");
+    return NULL;
+  }
+ 
+
+  file_list = malloc(size * sizeof(char *));
+  if (file_list == NULL) {
+    perror("malloc: cannot allocate enough memory for our file_list.\n");
+    closedir(d);
+    return NULL;
+  }
+
+  while((dir = readdir(d)) != NULL) {
+    // Check if the path is "." or ".."
+    if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
+      continue;
+    }
+
+    if (count >= size) {
+      size *= 2;
+      char **temp = realloc(file_list, size * sizeof(char *));
+      if (temp == NULL) {
+        perror("realloc: cannot reallocate more memory to file_list.\n");
+
+        // Free previously allocated memory
+        for (int i = 0; i < count; i++) {
+          free(file_list[i]);
+        }
+
+        free(file_list);
+        closedir(d);
+        return NULL;
+      }
+
+      file_list = temp;
+    }
+
+    file_list[count] = strdup(dir->d_name);
+    if (file_list[count] == NULL) {
+      perror("strdup: could not copy the dir->d_name.\n");
+      for (int i = 0; i < count; i++) {
+        free(file_list[i]);
+      }
+
+      free(file_list);
+      closedir(d);
+      return NULL;
+    }
+
+    count++;
+    printf("%s\n", dir->d_name);
+  }
+
+  closedir(d);
+  *num_files = count;
+  return file_list;
+}
+
+int handle_commit() {
+  struct stat st = { 0 };
+
+  if (stat(".beargit", &st) == -1) {
+    printf("The beargit project has not been initiated. Initiate it first with 'beargit init'.\n");
+    return 1;
+  }
+
+  char* uuid = generate_random_uuid();
+  printf("A new commit has been created <%s>.\n", uuid);
+
+  char* new_dir;
+  sprintf(new_dir, "./.beargit/%s", uuid);
+
+  // @todo: Think about a better way to handle this error, most likely
+  // by making 3 attempts to generate a new uuid (which should not happen, but who knows?)
+  if (stat(new_dir, &st) != -1) {
+    printf("Strange error: the commit with the same hash %s has already been created.\n", uuid);
+    return 1;
+  }
+
+  // Make a directory for our new commit
+
+  mkdir(new_dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+  int num_files;
+  char **files = list_files("./tracked-project-example", &num_files);
+
+  printf("Printing source files now: \n");
+  if (files != NULL) {
+    for (int i = 0; i < num_files; i++) {
+      printf("file: %s\n", files[i]);
+    }
+
+    free_file_list(files, num_files);
+  }
+  
   return 0;
+}
+
+/**
+  * This method handles the init of the beargit repository locally.
+  **/
+int handle_init() {
+  struct stat st = { 0 };
+
+  if (stat(".beargit", &st) == -1) {
+    // grant all permissions
+    mkdir(".beargit", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    return 0;
+  } else {
+    printf("The beargit project has been initiated. The .beargit directory has already been created.\n");
+    return 1;
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -50,7 +165,7 @@ int main(int argc, char *argv[]) {
     printf("%s", line);
   }
 
-  list_files("./tracked-project-example");
+  // list_files("./tracked-project-example");
 
   if (argc != 2) {
     printf("Usage: %s <command>\n", argv[0]);
@@ -58,8 +173,10 @@ int main(int argc, char *argv[]) {
   }
 
   if (strcmp(argv[1], "init") == 0) {
-    printf("Hello world\n");
-    return 0;
+    return handle_init();
+  } else if (strcmp(argv[1], "commit") == 0){
+    // For now, by default, all files are commited;
+    return handle_commit();
   } else {
     printf("Unknown command: %s\n", argv[1]);
     return 1;
