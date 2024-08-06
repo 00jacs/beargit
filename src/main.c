@@ -8,6 +8,9 @@
 #include <string.h>
 #include <uuid/uuid.h>
 
+const char* SOURCE_DIR = "./tracked-project-example";
+const char* BEARGIT_DIR = "./.beargit";
+
 char* generate_random_uuid() {
   uuid_t binuuid;
   uuid_generate_random(binuuid);
@@ -29,7 +32,7 @@ void free_file_list(char** file_list, int num_files) {
   free(file_list);
 }
 
-char **list_files(char* path, int* num_files) {
+char **list_files(const char* path, int* num_files) {
   DIR *d;
   struct dirent *dir;
 
@@ -98,8 +101,8 @@ char **list_files(char* path, int* num_files) {
 
 int copy_file(char* source_name, char* commit_hash) {
   // Allocate proper size to the source_path string
-  char* source_path = (char*) malloc(snprintf(0, 0, "./tracked-project-example/%s", source_name) + 1);
-  sprintf(source_path, "./tracked-project-example/%s", source_name);
+  char* source_path = (char*) malloc(snprintf(0, 0, "./%s/%s", SOURCE_DIR, source_name) + 1);
+  sprintf(source_path, "./%s/%s", SOURCE_DIR, source_name);
 
   FILE *source_file_ptr = fopen(source_path, "r");
 
@@ -108,8 +111,8 @@ int copy_file(char* source_name, char* commit_hash) {
     return 1;
   }
 
-  char* dest_path = (char*) malloc(snprintf(0, 0, "./.beargit/%s/%s", commit_hash, source_name) + 1);
-  sprintf(dest_path, "./.beargit/%s/%s", commit_hash, source_name);
+  char* dest_path = (char*) malloc(snprintf(0, 0, "%s/%s/%s", BEARGIT_DIR, commit_hash, source_name) + 1);
+  sprintf(dest_path, "%s/%s/%s", BEARGIT_DIR, commit_hash, source_name);
 
   FILE *dest_file_ptr = fopen(dest_path, "w");
 
@@ -130,7 +133,7 @@ int copy_file(char* source_name, char* commit_hash) {
 int handle_commit() {
   struct stat st = { 0 };
 
-  if (stat(".beargit", &st) == -1) {
+  if (stat(BEARGIT_DIR, &st) == -1) {
     printf("The beargit project has not been initiated. Initiate it first with 'beargit init'.\n");
     return 1;
   }
@@ -139,7 +142,7 @@ int handle_commit() {
   printf("A new commit has been created <%s>.\n", commit_hash);
 
   // Allocate a proper size for the new_dir string with malloc
-  char* new_dir = (char*) malloc(snprintf(0, 0, "./.beargit/%s", commit_hash) + 1);
+  char* new_dir = (char*) malloc(snprintf(0, 0, "%s/%s", BEARGIT_DIR, commit_hash) + 1);
 
   // If memory of this size cannot be allocated, return error
   if (new_dir == NULL) {
@@ -148,7 +151,7 @@ int handle_commit() {
   }
 
   // @tothink: for safety reasons, consider switching to snprintf
-  sprintf(new_dir, "./.beargit/%s", commit_hash);
+  sprintf(new_dir, "%s/%s", BEARGIT_DIR, commit_hash);
 
   // @todo: Think about a better way to handle this error, most likely
   // by making 3 attempts to generate a new uuid (which should not happen, but who knows?)
@@ -161,7 +164,7 @@ int handle_commit() {
   mkdir(new_dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
   int num_files;
-  char **files = list_files("./tracked-project-example", &num_files);
+  char **files = list_files(SOURCE_DIR, &num_files);
 
   if (files == NULL) {
     printf("No files are there to be tracked. Cannot commit.\n");
@@ -188,9 +191,9 @@ int handle_commit() {
 int handle_init() {
   struct stat st = { 0 };
 
-  if (stat(".beargit", &st) == -1) {
+  if (stat(BEARGIT_DIR, &st) == -1) {
     // grant all permissions
-    mkdir(".beargit", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    mkdir(BEARGIT_DIR, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     printf("Successfully initiated a beargit project. Feel free to use 'beargit commit' to commit all your current changes.\n");
     return 0;
   } else {
