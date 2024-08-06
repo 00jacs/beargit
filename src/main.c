@@ -39,14 +39,14 @@ char **list_files(char* path, int* num_files) {
 
   d = opendir(path);
   if (d == NULL) {
-    perror("We could not list files from the source directory of the project.\n");
+    printf("error: We could not list files from the source directory of the project.\n");
     return NULL;
   }
  
 
   file_list = malloc(size * sizeof(char *));
   if (file_list == NULL) {
-    perror("malloc: cannot allocate enough memory for our file_list.\n");
+    printf("error (malloc): cannot allocate enough memory for our file_list.\n");
     closedir(d);
     return NULL;
   }
@@ -61,7 +61,7 @@ char **list_files(char* path, int* num_files) {
       size *= 2;
       char **temp = realloc(file_list, size * sizeof(char *));
       if (temp == NULL) {
-        perror("realloc: cannot reallocate more memory to file_list.\n");
+        printf("error (realloc): cannot reallocate more memory to file_list.\n");
 
         // Free previously allocated memory
         for (int i = 0; i < count; i++) {
@@ -78,7 +78,7 @@ char **list_files(char* path, int* num_files) {
 
     file_list[count] = strdup(dir->d_name);
     if (file_list[count] == NULL) {
-      perror("strdup: could not copy the dir->d_name.\n");
+      printf("error (strdup): could not copy the dir->d_name.\n");
       for (int i = 0; i < count; i++) {
         free(file_list[i]);
       }
@@ -89,12 +89,42 @@ char **list_files(char* path, int* num_files) {
     }
 
     count++;
-    printf("%s\n", dir->d_name);
   }
 
   closedir(d);
   *num_files = count;
   return file_list;
+}
+
+int copy_file(char* source_name, char* commit_hash) {
+  // Allocate proper size to the source_path string
+  char* source_path = (char*) malloc(snprintf(0, 0, "./tracked-project-example/%s", source_name) + 1);
+  sprintf(source_path, "./tracked-project-example/%s", source_name);
+
+  FILE *source_file_ptr = fopen(source_path, "r");
+
+  if (source_file_ptr == NULL) {
+    printf("Cannot open file: %s\n", source_name);
+    return 1;
+  }
+
+  char* dest_path = (char*) malloc(snprintf(0, 0, "./.beargit/%s/%s", commit_hash, source_name) + 1);
+  sprintf(dest_path, "./.beargit/%s/%s", commit_hash, source_name);
+
+  FILE *dest_file_ptr = fopen(dest_path, "w");
+
+  if (dest_file_ptr == NULL) {
+    printf("Cannot write a copy for commit %s for file %s.\n", commit_hash, source_name);
+    return 1;
+  }
+
+  int c;
+  while((c = fgetc(source_file_ptr)) != EOF)
+    fputc(c, dest_file_ptr);
+
+  fclose(source_file_ptr);
+  fclose(dest_file_ptr);
+  return 0;
 }
 
 int handle_commit() {
@@ -105,35 +135,50 @@ int handle_commit() {
     return 1;
   }
 
-  char* uuid = generate_random_uuid();
-  printf("A new commit has been created <%s>.\n", uuid);
+  char* commit_hash = generate_random_uuid();
+  printf("A new commit has been created <%s>.\n", commit_hash);
 
-  char* new_dir;
-  sprintf(new_dir, "./.beargit/%s", uuid);
+  // Allocate a proper size for the new_dir string with malloc
+  char* new_dir = (char*) malloc(snprintf(0, 0, "./.beargit/%s", commit_hash) + 1);
+
+  // If memory of this size cannot be allocated, return error
+  if (new_dir == NULL) {
+    printf("error: not enough memory to allocate for new_dir.\n");
+    return 1;
+  }
+
+  // @tothink: for safety reasons, consider switching to snprintf
+  sprintf(new_dir, "./.beargit/%s", commit_hash);
 
   // @todo: Think about a better way to handle this error, most likely
   // by making 3 attempts to generate a new uuid (which should not happen, but who knows?)
   if (stat(new_dir, &st) != -1) {
-    printf("Strange error: the commit with the same hash %s has already been created.\n", uuid);
+    printf("Strange error: the commit with the same hash %s has already been created.\n", commit_hash);
     return 1;
   }
 
   // Make a directory for our new commit
-
   mkdir(new_dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
   int num_files;
   char **files = list_files("./tracked-project-example", &num_files);
 
-  printf("Printing source files now: \n");
-  if (files != NULL) {
-    for (int i = 0; i < num_files; i++) {
-      printf("file: %s\n", files[i]);
-    }
-
-    free_file_list(files, num_files);
+  if (files == NULL) {
+    printf("No files are there to be tracked. Cannot commit.\n");
   }
   
+  for (int i = 0; i < num_files; i++) {
+    int error = copy_file(files[i], commit_hash);
+
+    if (error) {
+      printf("\t - COULD NOT COMMIT %s\n", files[i]);
+      return 1;
+    } else {
+      printf("\t - commited %s\n", files[i]);
+    }
+  }
+
+  free_file_list(files, num_files);
   return 0;
 }
 
@@ -146,6 +191,7 @@ int handle_init() {
   if (stat(".beargit", &st) == -1) {
     // grant all permissions
     mkdir(".beargit", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    printf("Successfully initiated a beargit project. Feel free to use 'beargit commit' to commit all your current changes.\n");
     return 0;
   } else {
     printf("The beargit project has been initiated. The .beargit directory has already been created.\n");
@@ -154,21 +200,8 @@ int handle_init() {
 }
 
 int main(int argc, char *argv[]) {
-  char* uuid = generate_random_uuid();
-  printf("uuid: %s\n", uuid);
-
-  FILE *fptr;
-  fptr = fopen("./tracked-project-example/sample.md", "r");
-
-  char line[100]; // assume that the line does not have more than 100 chars (@todo)
-  while (fgets(line, 100, fptr)) {
-    printf("%s", line);
-  }
-
-  // list_files("./tracked-project-example");
-
   if (argc != 2) {
-    printf("Usage: %s <command>\n", argv[0]);
+    printf("Usage: %s <command>\n\t- init: initialize the beargit repository\n\t- commit: commit all the current files\n", argv[0]);
     return 1;
   }
 
